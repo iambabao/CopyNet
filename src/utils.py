@@ -69,7 +69,7 @@ def make_batch_iter(data, batch_size, shuffle):
         random.shuffle(data)
 
     num_batches = (data_size + batch_size - 1) // batch_size
-    print('total batches: ', num_batches)
+    print('total batches: {}'.format(num_batches))
     for i in range(num_batches):
         start_index = i * batch_size
         end_index = min(data_size, (i + 1) * batch_size)
