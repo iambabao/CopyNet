@@ -16,7 +16,6 @@ class CopyNet(tf.keras.Model):
 
         self.embedding_size = config.embedding_size
         self.hidden_size = config.hidden_size
-        self.att_size = config.att_size
 
         self.lr = config.lr
         self.dropout = config.dropout
@@ -42,7 +41,7 @@ class CopyNet(tf.keras.Model):
         self.embedding_dropout = tf.keras.layers.Dropout(self.dropout)
         self.encoder_cell_fw = tf.nn.rnn_cell.GRUCell(self.hidden_size)
         self.encoder_cell_bw = tf.nn.rnn_cell.GRUCell(self.hidden_size)
-        self.decoder_cell = tf.nn.rnn_cell.GRUCell(self.hidden_size)  # will be updated in call()
+        self.decoder_cell = tf.nn.rnn_cell.GRUCell(self.hidden_size)
 
         if config.optimizer == 'Adam':
             self.optimizer = tf.train.AdamOptimizer(self.lr)
@@ -97,6 +96,7 @@ class CopyNet(tf.keras.Model):
                 vocab_size=self.vocab_size,
                 gen_vocab_size=self.vocab_size
             )
+
         dec_initial_state = decoder_cell.zero_state(batch_size=tf.shape(src_inp)[0], dtype=tf.float32)
         dec_initial_state = dec_initial_state.clone(cell_state=enc_state)
 
@@ -174,6 +174,7 @@ class CopyNet(tf.keras.Model):
                 vocab_size=self.vocab_size,
                 gen_vocab_size=self.vocab_size
             )
+
         dec_initial_state = decoder_cell.zero_state(batch_size=tf.shape(self.src_inp)[0], dtype=tf.float32)
         dec_initial_state = dec_initial_state.clone(cell_state=enc_state)
 
@@ -225,6 +226,7 @@ class CopyNet(tf.keras.Model):
                 vocab_size=self.vocab_size,
                 gen_vocab_size=self.vocab_size
             )
+
         dec_initial_state = decoder_cell.zero_state(batch_size=tf.shape(tiled_src_inp)[0], dtype=tf.float32)
         dec_initial_state = dec_initial_state.clone(cell_state=tiled_enc_state)
 

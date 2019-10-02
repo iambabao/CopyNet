@@ -41,7 +41,7 @@ class Seq2Seq(tf.keras.Model):
         self.embedding_dropout = tf.keras.layers.Dropout(self.dropout)
         self.encoder_cell_fw = tf.nn.rnn_cell.GRUCell(self.hidden_size)
         self.encoder_cell_bw = tf.nn.rnn_cell.GRUCell(self.hidden_size)
-        self.decoder_cell = tf.nn.rnn_cell.GRUCell(self.hidden_size)  # will be updated in call()
+        self.decoder_cell = tf.nn.rnn_cell.GRUCell(self.hidden_size)
         self.final_layer = tf.layers.Dense(self.vocab_size, name='final_layer')
 
         if config.optimizer == 'Adam':
@@ -88,7 +88,7 @@ class Seq2Seq(tf.keras.Model):
         enc_output = tf.concat(enc_output, axis=-1)
         enc_state = tf.maximum(enc_state[0], enc_state[1])
 
-        # build attention mechanism
+        # add attention mechanism to decoder cell
         with tf.variable_scope('attention_mechanism', reuse=False):
             attention_mechanism = tf.contrib.seq2seq.LuongAttention(
                 self.hidden_size,
@@ -96,12 +96,12 @@ class Seq2Seq(tf.keras.Model):
                 memory_sequence_length=self.src_len
             )
 
-        # add attention mechanism to decoder cell
-        decoder_cell = tf.contrib.seq2seq.AttentionWrapper(
-            self.decoder_cell,
-            attention_mechanism,
-            attention_layer_size=self.att_size
-        )
+            decoder_cell = tf.contrib.seq2seq.AttentionWrapper(
+                self.decoder_cell,
+                attention_mechanism,
+                attention_layer_size=self.att_size
+            )
+
         dec_initial_state = decoder_cell.zero_state(batch_size=tf.shape(src_inp)[0], dtype=tf.float32)
         dec_initial_state = dec_initial_state.clone(cell_state=enc_state)
 
@@ -170,7 +170,7 @@ class Seq2Seq(tf.keras.Model):
         enc_output = tf.concat(enc_output, axis=-1)
         enc_state = tf.maximum(enc_state[0], enc_state[1])
 
-        # build attention mechanism
+        # add attention mechanism to decoder cell
         with tf.variable_scope('attention_mechanism', reuse=True):
             attention_mechanism = tf.contrib.seq2seq.LuongAttention(
                 self.hidden_size,
@@ -178,12 +178,12 @@ class Seq2Seq(tf.keras.Model):
                 memory_sequence_length=self.src_len
             )
 
-        # add attention mechanism to decoder cell
-        decoder_cell = tf.contrib.seq2seq.AttentionWrapper(
-            self.decoder_cell,
-            attention_mechanism,
-            attention_layer_size=self.att_size
-        )
+            decoder_cell = tf.contrib.seq2seq.AttentionWrapper(
+                self.decoder_cell,
+                attention_mechanism,
+                attention_layer_size=self.att_size
+            )
+
         dec_initial_state = decoder_cell.zero_state(batch_size=tf.shape(self.src_inp)[0], dtype=tf.float32)
         dec_initial_state = dec_initial_state.clone(cell_state=enc_state)
 
@@ -227,7 +227,7 @@ class Seq2Seq(tf.keras.Model):
         tiled_enc_output = tf.contrib.seq2seq.tile_batch(enc_output, multiplier=self.beam_size)
         tiled_enc_state = tf.contrib.seq2seq.tile_batch(enc_state, multiplier=self.beam_size)
 
-        # building attention mechanism
+        # add attention mechanism to decoder cell
         with tf.variable_scope('attention_mechanism', reuse=True):
             attention_mechanism = tf.contrib.seq2seq.LuongAttention(
                 self.hidden_size,
@@ -235,12 +235,12 @@ class Seq2Seq(tf.keras.Model):
                 memory_sequence_length=tiled_src_len
             )
 
-        # add attention mechanism to decoder cell
-        decoder_cell = tf.contrib.seq2seq.AttentionWrapper(
-            self.decoder_cell,
-            attention_mechanism,
-            attention_layer_size=self.att_size
-        )
+            decoder_cell = tf.contrib.seq2seq.AttentionWrapper(
+                self.decoder_cell,
+                attention_mechanism,
+                attention_layer_size=self.att_size
+            )
+
         dec_initial_state = decoder_cell.zero_state(batch_size=tf.shape(tiled_src_inp)[0], dtype=tf.float32)
         dec_initial_state = dec_initial_state.clone(cell_state=tiled_enc_state)
 

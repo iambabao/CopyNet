@@ -24,8 +24,8 @@ config = Config('./', args.model, num_epoch=args.epoch, batch_size=args.batch,
                 optimizer=args.optimizer, lr=args.lr,
                 embedding_trainable=args.em)
 
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+# os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
+# os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 sess_config = tf.ConfigProto(allow_soft_placement=True)
 sess_config.gpu_options.allow_growth = True
 

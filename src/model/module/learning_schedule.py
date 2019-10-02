@@ -1,8 +1,5 @@
 import tensorflow as tf
 
-# (tf.keras.optimizers.schedules.LearningRateSchedule)
-#         super(CustomSchedule, self).__init__()
-
 
 class CustomSchedule:
     def __init__(self, d_model, global_step, warmup_steps=4000):
