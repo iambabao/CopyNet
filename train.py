@@ -125,7 +125,7 @@ def train():
     word_2_id, id_2_word = read_dict(config.vocab_dict)
     config.vocab_size = len(word_2_id)
 
-    if os.path.exists(config.glove_file) and False:
+    if os.path.exists(config.glove_file):
         print('loading embedding matrix from file: {}'.format(config.glove_file))
         embedding_matrix, config.embedding_size = load_glove_embedding(config.glove_file, list(word_2_id.keys()))
         print('shape of embedding matrix: {}'.format(embedding_matrix.shape))
