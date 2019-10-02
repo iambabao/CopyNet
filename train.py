@@ -170,7 +170,7 @@ def train():
 
             if score > best_score:
                 best_score = score
-                saver.save(sess, config.model_file, global_step=1)
+                saver.save(sess, config.model_file, global_step=i)
 
     print('best score: {:>.4f}'.format(best_score))
     print('done')
