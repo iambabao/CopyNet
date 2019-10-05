@@ -106,6 +106,11 @@ def test():
     word_2_id, id_2_word = read_dict(config.vocab_dict)
     config.vocab_size = len(word_2_id)
 
+    if os.path.exists(config.glove_file):
+        with open(config.glove_file, 'r', encoding='utf-8') as fin:
+            line = fin.readline()
+            config.embedding_size = len(line.strip().split()) - 1
+
     data_reader = DataReader(config, word_2_id)
     test_data = data_reader.read_test_data()
 
