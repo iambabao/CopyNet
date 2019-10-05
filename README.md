@@ -18,7 +18,14 @@ run `train.py` with arguments:
 ```bash
 python train.py -m copynet --batch 32 --epoch 30 --optimizer custom
 ```
-More detail can be found in `train.py`.
+
+run `test.py` with arguments
+```bash
+python test.py -m copynet --batch 32 --optimizer custom
+```
+More detail can be found in `train.py` and `test.py`.
+
+Traditional `seq2seq` model with attention mechanism is also available.
 
 ## Acknowledgement
 Most of code in `copynet_wrapper.py` are copied from [https://github.com/lspvic/CopyNet](https://github.com/lspvic/CopyNet)
