@@ -12,16 +12,10 @@ from src.utils import read_dict, make_batch_iter, pad_batch, convert_list
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--model', '-m', type=str, required=True)
-parser.add_argument('--epoch', type=int, default=30)
 parser.add_argument('--batch', type=int, default=32)
-parser.add_argument('--optimizer', type=str, default='Adam')
-parser.add_argument('--lr', type=float, default=0.001)
-parser.add_argument('--em', action='store_true', default=False)
 args = parser.parse_args()
 
-config = Config('./', args.model, num_epoch=args.epoch, batch_size=args.batch,
-                optimizer=args.optimizer, lr=args.lr,
-                embedding_trainable=args.em)
+config = Config('./', args.model, batch_size=args.batch)
 
 # os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
 # os.environ['CUDA_VISIBLE_DEVICES'] = '0'
