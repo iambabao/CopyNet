@@ -1,9 +1,10 @@
 .idea
 .vscode
-/data
-/result
-temp/
+/data/*
+/result/*
+/**/temp/
 temp.*
+/*.sh
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

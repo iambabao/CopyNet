@@ -1,31 +1,33 @@
 # copynet
 
-A tensorflow implementation of CopyNet
-
-## Implementation
 Implement with tensorflow==1.14.  
-Some methods will be **DEPRECATED**, but stil work in this version. 
 
 ## Task
 I take `Question Generation` task as an example to show how model works.
 
-The dataset is [SQuAD](https://rajpurkar.github.io/SQuAD-explorer/).  
-The input is the concatenation of sentences containing answer and answer itself.  
-The output is question. More detail can be found in `preprocess.py` and `data_reader.py`.
+The data is from [this paper](https://link.springer.com/chapter/10.1007%2F978-3-319-73618-1_56)
+
+You can run:
+```bash
+python preprocess.py
+```
+to generate data
 
 ## How to use
-run `train.py` with arguments:
+You can run:
 ```bash
-python train.py -m copynet --batch 32 --epoch 30 --optimizer custom
+python run.py \
+  --model copynet \
+  --do_train \
+  --epoch 30 \
+  --batch 32 \
+  --optimizer Adam \
+  --lr 0.001 \
+  --dropout 0.2 \
+  --pre_train_epochs 5 \
+  --early_stop 5 \
+  --early_stop_delta 0.001
 ```
-
-run `test.py` with arguments
-```bash
-python test.py -m copynet --batch 32 --optimizer custom
-```
-More detail can be found in `train.py` and `test.py`.
-
-Traditional `seq2seq` model with attention mechanism is also available.
 
 ## Acknowledgement
-Most of code in `copynet_wrapper.py` are copied from [https://github.com/lspvic/CopyNet](https://github.com/lspvic/CopyNet)
+[https://github.com/lspvic/CopyNet](https://github.com/lspvic/CopyNet)

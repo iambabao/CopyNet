@@ -1,3 +1,11 @@
+# -*- coding: utf-8 -*-
+
+"""
+@Author     : Bao
+@Date       : 2020/2/20 20:42
+@Desc       :
+"""
+
 from .seq2seq import Seq2Seq
 from .copynet import CopyNet
 

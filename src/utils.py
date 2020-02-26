@@ -1,3 +1,12 @@
+# -*- coding: utf-8 -*-
+
+"""
+@Author     : Bao
+@Date       : 2020/2/20 20:42
+@Desc       :
+"""
+
+import os
 import json
 import numpy as np
 import math
@@ -9,6 +18,85 @@ import tensorflow as tf
 from jieba import posseg as pseg
 from gensim.models import Word2Vec
 from sklearn.feature_extraction.text import TfidfVectorizer
+
+
+def print_title(title, sep='=', file=None):
+    print(sep * 20 + '  {}  '.format(title) + sep * 20, file=file)
+
+
+def makedirs(dir):
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+
+
+def read_file(filename):
+    with open(filename, 'r', encoding='utf-8') as fin:
+        for line in fin:
+            yield line
+
+
+def save_file(data, filename):
+    with open(filename, 'w', encoding='utf-8') as fout:
+        for line in data:
+            print(line, file=fout)
+
+
+def read_json(filename):
+    with open(filename, 'r', encoding='utf-8') as fin:
+        return json.load(fin)
+
+
+def save_json(data, filename):
+    with open(filename, 'w', encoding='utf-8') as fout:
+        json.dump(data, fout, ensure_ascii=False, indent=4)
+
+
+def read_json_lines(filename):
+    with open(filename, 'r', encoding='utf-8') as fin:
+        for line in fin:
+            yield json.loads(line)
+
+
+def save_json_lines(data, filename):
+    with open(filename, 'w', encoding='utf-8') as fout:
+        for line in data:
+            print(json.dumps(line, ensure_ascii=False), file=fout)
+
+
+def read_txt_dict(filename, sep=None):
+    key_2_id = dict()
+    with open(filename, 'r', encoding='utf-8') as fin:
+        for line in fin:
+            if sep:
+                _key, _id = line.strip().split(sep)
+            else:
+                _key, _id = line.strip().split()
+            key_2_id[_key] = _id
+    id_2_key = dict(zip(key_2_id.values(), key_2_id.keys()))
+
+    return key_2_id, id_2_key
+
+
+def save_txt_dict(key_2_id, filename, sep=None):
+    with open(filename, 'w', encoding='utf-8') as fout:
+        for key, value in key_2_id.items():
+            if sep:
+                print('{} {}'.format(key, value), file=fout)
+            else:
+                print('{}{}{}'.format(key, sep, value), file=fout)
+
+
+def read_json_dict(filename):
+    with open(filename, 'r', encoding='utf-8') as fin:
+        key_2_id = json.load(fin)
+        id_2_key = dict(zip(key_2_id.values(), key_2_id.keys()))
+
+    return key_2_id, id_2_key
+
+
+def save_json_dict(data, filename):
+    with open(filename, 'w', encoding='utf-8') as fout:
+        json.dump(data, fout, ensure_ascii=False, indent=4)
 
 
 def pad_list(item_list, pad, max_len):
@@ -34,14 +122,6 @@ def convert_list(item_list, convert_dict, pad, unk, max_len=None):
     return item_list
 
 
-def read_dict(dict_file):
-    with open(dict_file, 'r', encoding='utf-8') as fin:
-        key_2_id = json.load(fin)
-        id_2_key = dict(zip(key_2_id.values(), key_2_id.keys()))
-
-    return key_2_id, id_2_key
-
-
 def cut_text(text, language='english'):
     text = text.strip()
     return nltk.word_tokenize(text, language=language)
@@ -52,9 +132,8 @@ def cut_text_zh(text):
     return jieba.lcut(text)
 
 
-def pos_text(text, lang='eng'):
-    text = text.strip()
-    return nltk.pos_tag(text, lang=lang)
+def pos_text(words, lang='eng'):
+    return nltk.pos_tag(words, lang=lang)
 
 
 def pos_text_zh(text):
@@ -62,14 +141,14 @@ def pos_text_zh(text):
     return pseg.lcut(text)
 
 
-def make_batch_iter(data, batch_size, shuffle):
+def make_batch_iter(data, batch_size, shuffle, verbose=True):
     data_size = len(data)
+    num_batches = (data_size + batch_size - 1) // batch_size
 
     if shuffle:
         random.shuffle(data)
-
-    num_batches = (data_size + batch_size - 1) // batch_size
-    print('total batches: {}'.format(num_batches))
+    if verbose:
+        print('total batches: {}'.format(num_batches))
     for i in range(num_batches):
         start_index = i * batch_size
         end_index = min(data_size, (i + 1) * batch_size)
@@ -102,16 +181,19 @@ def load_embedding(model_file, word_list):
 def load_glove_embedding(data_file, word_list):
     w2v = {}
     with open(data_file, 'r', encoding='utf-8') as fin:
-        for line in fin:
+        line = fin.readline()
+        embedding_size = len(line.strip().split()) - 1
+        while line:
             line = line.strip().split()
-            word = line[0]
-            vector = [float(val) for val in line[1:]]
-            if word in word_list:
-                w2v[word] = vector
-    print('hit {} word(s)'.format(len(w2v)))
+            if len(line) == embedding_size + 1:
+                word = line[0]
+                vector = [float(val) for val in line[1:]]
+                if word in word_list:
+                    w2v[word] = vector
+            line = fin.readline()
+    print('hit words: {}'.format(len(w2v)))
 
     embedding_matrix = []
-    embedding_size = len(list(w2v.values())[0])
     for word in word_list:
         if word in w2v:
             embedding_matrix.append(w2v[word])
@@ -166,15 +248,4 @@ def view_tf_check_point(ckpt_dir_or_file):
 
 
 # ====================
-def find_context_span(paragraph, answer_start):
-    stopwords = '.?!'
 
-    start = answer_start
-    while start > 0 and paragraph[start-1] not in stopwords:
-        start -= 1
-
-    end = answer_start
-    while end < len(paragraph) and paragraph[end] not in stopwords:
-        end += 1
-
-    return [start, end]

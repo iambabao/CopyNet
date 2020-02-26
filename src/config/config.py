@@ -1,16 +1,24 @@
+# -*- coding: utf-8 -*-
+
+"""
+@Author     : Bao
+@Date       : 2020/2/20 20:42
+@Desc       :
+"""
+
 import os
 
 
 class Config:
     def __init__(self, root_dir, current_model, num_epoch=30, batch_size=32,
-                 sequence_len=128, sentence_len=128, document_len=16,
-                 top_k=5, threshold=0.4, tfidf_size=5000, embedding_size=200,
-                 hidden_size=256, att_size=256,
+                 top_k=5, threshold=0.4, sequence_len=128,
+                 tfidf_size=5000, word_em_size=300,
+                 hidden_size=512, attention_size=512,
                  kernel_size=(2, 3, 4, 5), filter_dim=64,
                  num_layer=4, num_head=8, model_dim=256,
                  fc_size_s=128, fc_size_m=512, fc_size_l=1024,
-                 optimizer='Adam', lr=0.001, dropout=0.1, l2_rate=0.0,
-                 embedding_trainable=False):
+                 optimizer='Adam', lr=0.001, dropout=0.2, l2_rate=0.0,
+                 beam_search=False):
         self.root_dir = root_dir
 
         self.temp_dir = os.path.join(self.root_dir, 'temp')
@@ -19,11 +27,11 @@ class Config:
         self.train_data = os.path.join(self.data_dir, 'data_train.json')
         self.valid_data = os.path.join(self.data_dir, 'data_valid.json')
         self.test_data = os.path.join(self.data_dir, 'data_test.json')
-        self.stop_word = os.path.join(self.data_dir, 'stop_word.txt')
-        self.vocab_dict = os.path.join(self.data_dir, 'vocab_dict.json')
-        self.src_vocab_dict = os.path.join(self.data_dir, 'src_vocab_dict.json')
-        self.tgt_vocab_dict = os.path.join(self.data_dir, 'tgt_vocab_dict.json')
-        self.label_dict = os.path.join(self.data_dir, 'label_dict.json')
+        self.stop_words = os.path.join(self.data_dir, 'stop_words.txt')
+        self.vocab_dict = os.path.join(self.data_dir, 'dict_vocab.json')
+        self.src_vocab_dict = os.path.join(self.data_dir, 'dict_src_vocab.json')
+        self.tgt_vocab_dict = os.path.join(self.data_dir, 'dict_tgt_vocab.json')
+        self.label_dict = os.path.join(self.data_dir, 'dict_label.json')
 
         self.embedding_dir = os.path.join(self.data_dir, 'embedding')
         self.plain_text = os.path.join(self.embedding_dir, 'plain_text.txt')
@@ -45,34 +53,36 @@ class Config:
         self.bert_config = os.path.join(self.bert_dir, 'bert_config.json')
         self.bert_ckpt = os.path.join(self.bert_dir, 'bert_model.ckpt')
 
-        self.pad = 'PAD'
+        self.pad = '<pad>'
         self.pad_id = 0
-        self.unk = 'UNK'
+        self.unk = '<unk>'
         self.unk_id = 1
-        self.sos = 'SOS'
+        self.sos = '<sos>'
         self.sos_id = 2
-        self.eos = 'EOS'
+        self.eos = '<eos>'
         self.eos_id = 3
-        self.num = 'NUM'
-        self.num_id = 4
-        self.time = 'TIME'
-        self.time_id = 5
-        self.vocab_size = 80000
-        self.src_vocab_size = 40000
-        self.tgt_vocab_size = 40000
+        self.sep = '<sep>'
+        self.sep_id = 4
+        self.num = '<num>'
+        self.num_id = 5
+        self.time = '<time>'
+        self.time_id = 6
+        self.vocab_size = 40000
+        self.src_vocab_size = 20000
+        self.tgt_vocab_size = 20000
+        self.oov_vocab_size = 100000
         self.to_lower = True
 
         self.top_k = top_k
         self.threshold = threshold
         self.tfidf_size = tfidf_size
-        self.embedding_size = embedding_size
+        self.word_em_size = word_em_size
         self.sequence_len = sequence_len
-        self.sentence_len = sentence_len
-        self.document_len = document_len
+        self.beam_search = beam_search
 
         # RNN
         self.hidden_size = hidden_size
-        self.att_size = att_size
+        self.attention_size = attention_size
 
         # CNN
         self.kernel_size = kernel_size
@@ -95,4 +105,3 @@ class Config:
         self.dropout = dropout
         self.optimizer = optimizer
         self.l2_rate = l2_rate
-        self.embedding_trainable = embedding_trainable

@@ -1,20 +1,29 @@
+# -*- coding: utf-8 -*-
+
+"""
+@Author     : Bao
+@Date       : 2020/2/20 20:42
+@Desc       :
+"""
+
 import tensorflow as tf
 
-from .module.learning_schedule import CustomSchedule
+from .module.metrics import get_sparse_softmax_cross_entropy_loss, get_accuracy
 
 
 class Seq2Seq:
-    def __init__(self, config, embedding_matrix):
+    def __init__(self, config, word_embedding_matrix):
         self.sos_id = config.sos_id
         self.eos_id = config.eos_id
         self.vocab_size = config.vocab_size
+        self.oov_vocab_size = config.oov_vocab_size
         self.max_seq_len = config.sequence_len
         self.beam_size = config.top_k
+        self.beam_search = config.beam_search
 
-        self.embedding_size = config.embedding_size
+        self.word_em_size = config.word_em_size
         self.hidden_size = config.hidden_size
-        self.att_size = config.att_size
-
+        self.attention_size = config.attention_size
         self.lr = config.lr
         self.dropout = config.dropout
 
@@ -23,24 +32,28 @@ class Seq2Seq:
         self.tgt_out = tf.placeholder(tf.int32, [None, None], name='tgt_out')
         self.src_len = tf.placeholder(tf.int32, [None], name='src_len')
         self.tgt_len = tf.placeholder(tf.int32, [None], name='tgt_len')
+        self.training = tf.placeholder(tf.bool, [], name='training')
 
         self.global_step = tf.Variable(0, trainable=False, name='global_step')
 
-        if embedding_matrix is not None:
+        if word_embedding_matrix is not None:
             self.word_embedding = tf.keras.layers.Embedding(
-                self.vocab_size,
-                self.embedding_size,
-                embeddings_initializer=tf.constant_initializer(embedding_matrix),
-                trainable=config.embedding_trainable,
+                self.vocab_size + self.oov_vocab_size,
+                self.word_em_size,
+                embeddings_initializer=tf.constant_initializer(word_embedding_matrix),
                 name='word_embedding'
             )
         else:
-            self.word_embedding = tf.keras.layers.Embedding(self.vocab_size, self.embedding_size, name='word_embedding')
+            self.word_embedding = tf.keras.layers.Embedding(
+                self.vocab_size + self.oov_vocab_size,
+                self.word_em_size,
+                name='word_embedding'
+            )
         self.embedding_dropout = tf.keras.layers.Dropout(self.dropout)
         self.encoder_cell_fw = tf.nn.rnn_cell.GRUCell(self.hidden_size)
         self.encoder_cell_bw = tf.nn.rnn_cell.GRUCell(self.hidden_size)
         self.decoder_cell = tf.nn.rnn_cell.GRUCell(self.hidden_size)
-        self.final_layer = tf.layers.Dense(self.vocab_size, name='final_layer')
+        self.final_dense = tf.layers.Dense(self.vocab_size, name='final_dense')
 
         if config.optimizer == 'Adam':
             self.optimizer = tf.train.AdamOptimizer(self.lr)
@@ -50,200 +63,171 @@ class Seq2Seq:
             self.optimizer = tf.train.AdagradOptimizer(self.lr)
         elif config.optimizer == 'SGD':
             self.optimizer = tf.train.GradientDescentOptimizer(self.lr)
-        elif config.optimizer == 'custom':
-            self.lr = CustomSchedule(self.hidden_size, self.global_step)
-            self.optimizer = tf.train.AdamOptimizer(self.lr, beta1=0.9, beta2=0.98, epsilon=1e-9)
         else:
             assert False
 
-        self.train_op, self.loss, self.accu = self.get_train_op()
+        # clip oov words
+        clipped_tgt_out = tf.where(
+            tf.greater_equal(self.tgt_out, self.vocab_size),
+            tf.ones_like(self.tgt_out) * config.unk_id,
+            self.tgt_out
+        )
+
+        logits, self.predicted_ids, self.alignment_history = self.forward()
+        self.loss = get_sparse_softmax_cross_entropy_loss(clipped_tgt_out, logits, mask_sequence_length=self.tgt_len)
+        self.accu = get_accuracy(clipped_tgt_out, logits, mask_sequence_length=self.tgt_len)
+        self.gradients, self.train_op = self.get_train_op()
 
         tf.summary.scalar('learning_rate', self.lr() if callable(self.lr) else self.lr)
         tf.summary.scalar('loss', self.loss)
         tf.summary.scalar('accuracy', self.accu)
-        self.train_summary = tf.summary.merge_all()
+        self.summary = tf.summary.merge_all()
 
-        self.greedy_pred_id = self.greedy_inference()
-        self.beam_search_pred_id = self.beam_search_inference()
-
-        # check if new trainable variables created after get_train_op()
-        # print('==========  Checking Trainable Variables  ==========')
-        # for v in tf.trainable_variables():
-        #     print(v)
-
-    def get_train_op(self):
-        def get_loss(labels, logits):
-            mask = tf.cast(tf.math.not_equal(labels, 0), tf.float32)
-            loss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=labels, logits=logits)
-            # loss = tf.reduce_mean(tf.reduce_sum(mask * loss, axis=-1))  # loss by batch
-            loss = tf.reduce_mean(tf.reduce_sum(mask * loss, axis=-1) / tf.reduce_sum(mask, axis=-1))  # loss by token
-
-            return loss
-
-        def get_accuracy(labels, logits):
-            mask = tf.cast(tf.math.not_equal(labels, 0), tf.float32)
-            pred_ids = tf.cast(tf.argmax(logits, axis=-1), tf.int32)
-            accuracy = tf.cast(tf.equal(labels, pred_ids), tf.float32)
-            accuracy = tf.reduce_mean(tf.reduce_sum(mask * accuracy, axis=-1) / tf.reduce_sum(mask, axis=-1))
-
-            return accuracy
-
+    def forward(self):
         # embedding
-        src_em = self._word_embedding_layer(self.src_inp, training=True)
-        tgt_em = self._word_embedding_layer(self.tgt_inp, training=True)
+        src_em = self.src_embedding_layer()
+        tgt_em = self.tgt_embedding_layer()
 
         # encoding
-        enc_output, enc_state = self._encoding_layer(src_em, reuse=False)
+        enc_output, enc_state = self.encoding_layer(src_em)
 
-        # decoding
-        logits = self._training_decoding_layer(enc_output, enc_state, tgt_em)
+        # decoding in training
+        logits = self.training_decoding_layer(enc_output, enc_state, self.src_len, tgt_em)
 
-        loss = get_loss(self.tgt_out, logits)
-        accu = get_accuracy(self.tgt_out, logits)
+        # decoding in testing
+        if not self.beam_search:
+            predicted_ids, alignment_history = self.inference_decoding_layer(
+                enc_output, enc_state, self.src_len, beam_search=self.beam_search
+            )
+        else:
+            # tiled to beam size
+            tiled_enc_output = tf.contrib.seq2seq.tile_batch(enc_output, multiplier=self.beam_size)
+            tiled_enc_state = tf.contrib.seq2seq.tile_batch(enc_state, multiplier=self.beam_size)
+            tiled_src_len = tf.contrib.seq2seq.tile_batch(self.src_len, multiplier=self.beam_size)
+            predicted_ids, alignment_history = self.inference_decoding_layer(
+                tiled_enc_output, tiled_enc_state, tiled_src_len, beam_search=self.beam_search
+            )
 
-        gradients = tf.gradients(loss, tf.trainable_variables())
+        return logits, predicted_ids, alignment_history
+
+    def get_train_op(self):
+        gradients = tf.gradients(self.loss, tf.trainable_variables())
         gradients, _ = tf.clip_by_global_norm(gradients, 5)
         train_op = self.optimizer.apply_gradients(zip(gradients, tf.trainable_variables()), self.global_step)
 
-        print('==========  Trainable Variables  ==========')
-        for v in tf.trainable_variables():
-            print(v)
+        return gradients, train_op
 
-        print('==========  Gradients  ==========')
-        for g in gradients:
-            print(g)
-
-        return train_op, loss, accu
-
-    # greedy decoding
-    def greedy_inference(self):
-        # embedding
-        src_em = self._word_embedding_layer(self.src_inp, training=False)
-
-        # encoding
-        enc_output, enc_state = self._encoding_layer(src_em, reuse=True)
-
-        # decoding
-        pred_id = self._inference_decoding_layer(enc_output, enc_state, self.src_len, beam_search=False)
-
-        return pred_id
-
-    # beam search decoding
-    def beam_search_inference(self):
-        # embedding
-        src_em = self._word_embedding_layer(self.src_inp, training=False)
-
-        # encoding
-        enc_output, enc_state = self._encoding_layer(src_em, reuse=True)
-
-        # tiled to beam size
-        tiled_src_len = tf.contrib.seq2seq.tile_batch(self.src_len, multiplier=self.beam_size)
-        tiled_enc_output = tf.contrib.seq2seq.tile_batch(enc_output, multiplier=self.beam_size)
-        tiled_enc_state = tf.contrib.seq2seq.tile_batch(enc_state, multiplier=self.beam_size)
-
-        # decoding
-        pred_id = self._inference_decoding_layer(tiled_enc_output, tiled_enc_state, tiled_src_len, beam_search=False)
-
-        return pred_id
-
-    def _word_embedding_layer(self, inputs, training):
+    def src_embedding_layer(self):
         with tf.device('/cpu:0'):
-            inputs_em = self.word_embedding(inputs)
-        inputs_em = self.embedding_dropout(inputs_em, training=training)
+            src_em = self.word_embedding(self.src_inp)
+        src_em = self.embedding_dropout(src_em, training=self.training)
 
-        return inputs_em
+        return src_em
 
-    def _encoding_layer(self, src_em, reuse):
-        with tf.variable_scope('encoder', reuse=reuse):
+    def tgt_embedding_layer(self):
+        with tf.device('/cpu:0'):
+            tgt_em = self.word_embedding(self.tgt_inp)
+
+        return tgt_em
+
+    def encoding_layer(self, src_em):
+        with tf.variable_scope('encoder'):
             enc_output, enc_state = tf.nn.bidirectional_dynamic_rnn(
                 self.encoder_cell_fw,
                 self.encoder_cell_bw,
                 src_em,
-                sequence_length=self.src_len,
+                self.src_len,
                 dtype=tf.float32
             )
-        enc_output = tf.concat(enc_output, axis=-1)
-        enc_state = tf.maximum(enc_state[0], enc_state[1])
+
+            enc_output = tf.concat(enc_output, axis=-1)
+            if isinstance(enc_state[0], tf.nn.rnn_cell.LSTMStateTuple) \
+                    and isinstance(enc_state[1], tf.nn.rnn_cell.LSTMStateTuple):
+                enc_state = tf.nn.rnn_cell.LSTMStateTuple(
+                    c=enc_state[0].c + enc_state[1].c,
+                    h=enc_state[0].h + enc_state[1].h
+                )
+            else:
+                enc_state = enc_state[0] + enc_state[1]
 
         return enc_output, enc_state
 
-    def _training_decoding_layer(self, enc_output, enc_state, tgt_em):
-        # add attention mechanism to decoder cell
-        with tf.variable_scope('attention_mechanism', reuse=False):
-            attention_mechanism = tf.contrib.seq2seq.LuongAttention(
-                self.hidden_size,
-                enc_output,
-                memory_sequence_length=self.src_len
-            )
-
-            decoder_cell = tf.contrib.seq2seq.AttentionWrapper(
-                self.decoder_cell,
-                attention_mechanism,
-                attention_layer_size=self.att_size
-            )
-
-        dec_initial_state = decoder_cell.zero_state(batch_size=tf.shape(self.src_len)[0], dtype=tf.float32)
-        dec_initial_state = dec_initial_state.clone(cell_state=enc_state)
-
-        # build teacher forcing decoder
-        helper = tf.contrib.seq2seq.TrainingHelper(tgt_em, self.tgt_len)
-        decoder = tf.contrib.seq2seq.BasicDecoder(decoder_cell, helper, dec_initial_state, self.final_layer)
-
+    def training_decoding_layer(self, enc_output, enc_state, src_len, tgt_em):
         with tf.variable_scope('decoder', reuse=False):
-            dec_output, _, _ = tf.contrib.seq2seq.dynamic_decode(decoder)
-
-        logits = dec_output.rnn_output
-
-        return logits
-
-    def _inference_decoding_layer(self, enc_output, enc_state, src_len, beam_search):
-        # add attention mechanism to decoder cell
-        with tf.variable_scope('attention_mechanism', reuse=True):
-            attention_mechanism = tf.contrib.seq2seq.LuongAttention(
-                self.hidden_size,
+            # add attention mechanism to decoder cell
+            attention_mechanism = tf.contrib.seq2seq.BahdanauAttention(
+                self.attention_size,
                 enc_output,
                 memory_sequence_length=src_len
             )
+            decoder_cell = tf.contrib.seq2seq.AttentionWrapper(
+                self.decoder_cell,
+                attention_mechanism
+            )
 
+            dec_initial_state = decoder_cell.zero_state(batch_size=tf.shape(enc_output)[0], dtype=tf.float32)
+            dec_initial_state = dec_initial_state.clone(cell_state=enc_state)
+
+            # build teacher forcing decoder
+            helper = tf.contrib.seq2seq.TrainingHelper(tgt_em, self.tgt_len)
+            decoder = tf.contrib.seq2seq.BasicDecoder(decoder_cell, helper, dec_initial_state, self.final_dense)
+
+            # decoding
+            final_outputs, _, _ = tf.contrib.seq2seq.dynamic_decode(decoder, impute_finished=True)
+
+            logits = final_outputs.rnn_output
+
+        return logits
+
+    def inference_decoding_layer(self, enc_output, enc_state, src_len, beam_search):
+        with tf.variable_scope('decoder', reuse=True):
+            # add attention mechanism to decoder cell
+            attention_mechanism = tf.contrib.seq2seq.BahdanauAttention(
+                self.attention_size,
+                enc_output,
+                memory_sequence_length=src_len
+            )
             decoder_cell = tf.contrib.seq2seq.AttentionWrapper(
                 self.decoder_cell,
                 attention_mechanism,
-                attention_layer_size=self.att_size
+                alignment_history=not self.beam_search
             )
 
-        dec_initial_state = decoder_cell.zero_state(batch_size=tf.shape(src_len)[0], dtype=tf.float32)
-        dec_initial_state = dec_initial_state.clone(cell_state=enc_state)
+            dec_initial_state = decoder_cell.zero_state(batch_size=tf.shape(enc_output)[0], dtype=tf.float32)
+            dec_initial_state = dec_initial_state.clone(cell_state=enc_state)
 
-        if not beam_search:
-            # build greedy decoder
-            helper = tf.contrib.seq2seq.GreedyEmbeddingHelper(
-                self.word_embedding,
-                tf.fill([tf.shape(self.src_inp)[0]], self.sos_id),
-                self.eos_id
-            )
-            decoder = tf.contrib.seq2seq.BasicDecoder(decoder_cell, helper, dec_initial_state, self.final_layer)
-        else:
-            # build beam search decoder
-            decoder = tf.contrib.seq2seq.BeamSearchDecoder(
-                cell=decoder_cell,
-                embedding=self.word_embedding,
-                start_tokens=tf.fill([tf.shape(self.src_inp)[0]], self.sos_id),
-                end_token=self.eos_id,
-                initial_state=dec_initial_state,
-                beam_width=self.beam_size,
-                output_layer=self.final_layer,
-                length_penalty_weight=0.0,
-                coverage_penalty_weight=0.0
-            )
+            if not beam_search:
+                # build greedy decoder
+                helper = tf.contrib.seq2seq.GreedyEmbeddingHelper(
+                    self.word_embedding,
+                    tf.fill([tf.shape(self.src_len)[0]], self.sos_id),
+                    self.eos_id
+                )
+                decoder = tf.contrib.seq2seq.BasicDecoder(decoder_cell, helper, dec_initial_state, self.final_dense)
+            else:
+                # build beam search decoder
+                decoder = tf.contrib.seq2seq.BeamSearchDecoder(
+                    cell=decoder_cell,
+                    embedding=self.word_embedding,
+                    start_tokens=tf.fill([tf.shape(self.src_len)[0]], self.sos_id),
+                    end_token=self.eos_id,
+                    output_layer=self.final_dense,
+                    initial_state=dec_initial_state,
+                    beam_width=self.beam_size,
+                    length_penalty_weight=0.0,
+                    coverage_penalty_weight=0.0
+                )
 
-        # decoding
-        with tf.variable_scope('decoder', reuse=True):
-            dec_output, _, _ = tf.contrib.seq2seq.dynamic_decode(decoder, maximum_iterations=self.max_seq_len)
+            # decoding
+            final_outputs, final_state, _ = tf.contrib.seq2seq.dynamic_decode(decoder, maximum_iterations=self.max_seq_len)
 
-        if not beam_search:
-            pred_id = dec_output.sample_id
-        else:
-            pred_id = dec_output.predicted_ids  # (batch_size, seq_len, beam_size)
-            pred_id = tf.transpose(pred_id, perm=[0, 2, 1])  # (batch_size, beam_size, seq_len)
+            if not beam_search:
+                predicted_ids = final_outputs.sample_id
+                alignment_history = tf.transpose(final_state.alignment_history.stack(), perm=[1, 0, 2])
+            else:
+                predicted_ids = final_outputs.predicted_ids  # (batch_size, seq_len, beam_size)
+                predicted_ids = tf.transpose(predicted_ids, perm=[0, 2, 1])  # (batch_size, beam_size, seq_len)
+                predicted_ids = predicted_ids[:, 0, :]  # keep top one
+                alignment_history = tf.no_op()
 
-        return pred_id
+        return predicted_ids, alignment_history
