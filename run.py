@@ -219,12 +219,12 @@ def run_train(sess, model, train_data, valid_data, saver, evaluator,
                     elif flag < args.early_stop:
                         flag += 1
                     elif args.early_stop:
-                        return
+                        return valid_log_history
 
                     valid_log = valid_results['Bleu_4']
                     valid_log_history['loss'].append(valid_loss)
                     valid_log_history['accuracy'].append(valid_accu)
-                    valid_log_history['global_step'].append(global_step)
+                    valid_log_history['global_step'].append(int(global_step))
         print()
         print_title('Train Result')
         print('average train loss: {:>.4f}, average train accuracy: {:>.4f}'.format(
