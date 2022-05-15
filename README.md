@@ -1,4 +1,4 @@
-# copynet
+# CopyNet
 
 Implement with tensorflow==1.14.  
 
